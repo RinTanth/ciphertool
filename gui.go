@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"os/exec"
 	"runtime"
@@ -134,11 +135,39 @@ const guiPage = `<!doctype html>
     transition: opacity 0.2s ease;
   }
   .copied.show { opacity: 1; }
+  input[type="text"], input[type="password"] {
+    width: 100%;
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 13px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--cocoa);
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+  input[type="text"]:focus, input[type="password"]:focus { border-color: var(--caramel); }
+  .key-hint {
+    font-size: 12px;
+    color: var(--mocha);
+    margin-top: 8px;
+  }
 </style>
 </head>
-<body>
+<body data-default-key="{{.DefaultKey}}">
   <h1>🍮 ciphertool</h1>
-  <p class="subtitle">AES-GCM encrypt &amp; decrypt, local only</p>
+  <p class="subtitle">AES-GCM encrypt &amp; decrypt</p>
+
+  <div class="panel">
+    <label>AES-GCM Key</label>
+    <input type="password" id="key" placeholder="16 / 24 / 32-byte key" oninput="saveKey()">
+    <div class="row">
+      <button class="btn-ghost" onclick="toggleKeyVisibility()" id="toggle-key-btn">Show</button>
+      <button class="btn-ghost" onclick="resetKey()">Reset to default</button>
+    </div>
+    <p class="key-hint">Stored only in this browser (localStorage) — never written to disk.</p>
+  </div>
 
   <div class="panel">
     <label>Plaintext</label>
@@ -166,17 +195,43 @@ const guiPage = `<!doctype html>
   </div>
 
 <script>
+const DEFAULT_KEY = document.body.dataset.defaultKey;
+const KEY_STORAGE = 'ciphertool_key';
+
+(function initKey() {
+  const el = document.getElementById('key');
+  el.value = localStorage.getItem(KEY_STORAGE) || DEFAULT_KEY;
+})();
+
+function saveKey() {
+  localStorage.setItem(KEY_STORAGE, document.getElementById('key').value);
+}
+
+function resetKey() {
+  document.getElementById('key').value = DEFAULT_KEY;
+  saveKey();
+}
+
+function toggleKeyVisibility() {
+  const el = document.getElementById('key');
+  const btn = document.getElementById('toggle-key-btn');
+  const shown = el.type === 'text';
+  el.type = shown ? 'password' : 'text';
+  btn.textContent = shown ? 'Show' : 'Hide';
+}
+
 async function run(mode) {
   const errId = 'err-' + mode;
   document.getElementById(errId).textContent = '';
   const srcId = mode === 'encrypt' ? 'plain' : 'cipher';
   const dstId = mode === 'encrypt' ? 'cipher' : 'plain';
   const text = document.getElementById(srcId).value;
+  const key = document.getElementById('key').value;
   try {
     const resp = await fetch('/api/' + mode, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({text}),
+      body: JSON.stringify({text, key}),
     });
     const data = await resp.json();
     if (!resp.ok) {
@@ -215,6 +270,7 @@ function copyOut(id, badgeId) {
 
 type apiRequest struct {
 	Text string `json:"text"`
+	Key  string `json:"key"`
 }
 
 type apiResponse struct {
@@ -222,12 +278,22 @@ type apiResponse struct {
 	Error  string `json:"error,omitempty"`
 }
 
+// keyOrDefault lets the GUI override the built-in key per-request; falls back
+// to the compiled-in aesKey when the field is left blank.
+func keyOrDefault(k string) string {
+	if k == "" {
+		return aesKey
+	}
+	return k
+}
+
 func runGUI() {
+	tmpl := template.Must(template.New("gui").Parse(guiPage))
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, guiPage)
+		tmpl.Execute(w, struct{ DefaultKey string }{DefaultKey: aesKey})
 	})
 
 	mux.HandleFunc("/api/encrypt", func(w http.ResponseWriter, r *http.Request) {
@@ -236,7 +302,7 @@ func runGUI() {
 			writeJSON(w, http.StatusBadRequest, apiResponse{Error: "invalid request"})
 			return
 		}
-		result, err := EncryptGCM(req.Text, aesKey)
+		result, err := EncryptGCM(req.Text, keyOrDefault(req.Key))
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
 			return
@@ -250,7 +316,7 @@ func runGUI() {
 			writeJSON(w, http.StatusBadRequest, apiResponse{Error: "invalid request"})
 			return
 		}
-		result, err := DecryptGCM(req.Text, aesKey)
+		result, err := DecryptGCM(req.Text, keyOrDefault(req.Key))
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
 			return

@@ -13,7 +13,7 @@ import (
 
 // aesKey must match frep-oc-aml's configured aes.aes_key and be 16, 24, or 32
 // bytes long (AES-128/192/256). Replace the placeholder below with the real key.
-const aesKey = "EQ1YmC+r9+oHMyAxd8gAly+JHEXbtR28"
+const aesKey = "YOUR_AESGCM_KEY!"
 
 // EncryptGCM and DecryptGCM mirror frep-oc-aml's api/common/aesgcm/aesgcm.go:
 // AES-GCM with a random 12-byte nonce prepended to the ciphertext, hex-encoded.
@@ -80,15 +80,16 @@ func main() {
 	gui := flag.Bool("gui", false, "launch a local web GUI for encrypt/decrypt")
 	flag.Parse()
 
-	if aesKey == "CHANGE_ME_16BYTE" {
-		fmt.Fprintln(os.Stderr, "aesKey is still the placeholder value — edit the const in main.go before use")
-		os.Exit(1)
-	}
-
 	switch {
 	case *gui:
+		// GUI lets the key be entered/overridden in the browser, so the
+		// compiled-in placeholder isn't a blocker here.
 		runGUI()
 	case *encryptText != "":
+		if aesKey == "YOUR_AESGCM_KEY!" {
+			fmt.Fprintln(os.Stderr, "aesKey is still the placeholder value — edit the const in main.go, or use -gui and enter a key there")
+			os.Exit(1)
+		}
 		result, err := EncryptGCM(*encryptText, aesKey)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "encrypt failed:", err)
@@ -96,6 +97,10 @@ func main() {
 		}
 		fmt.Println(result)
 	case *decryptText != "":
+		if aesKey == "YOUR_AESGCM_KEY!" {
+			fmt.Fprintln(os.Stderr, "aesKey is still the placeholder value — edit the const in main.go, or use -gui and enter a key there")
+			os.Exit(1)
+		}
 		result, err := DecryptGCM(*decryptText, aesKey)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "decrypt failed:", err)
