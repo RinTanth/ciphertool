@@ -174,8 +174,8 @@ const guiPage = `<!doctype html>
     <textarea class="input" id="plain" placeholder="Paste text to encrypt..."></textarea>
     <div class="row">
       <button class="btn-primary" onclick="run('encrypt')">Encrypt ↓</button>
-      <button class="btn-ghost" onclick="formatJSON()">Format JSON</button>
       <button class="btn-ghost" onclick="copyOut('cipher', 'copied-cipher')">Copy ciphertext</button>
+      <button class="btn-ghost" onclick="formatJSON()">Format JSON</button>
       <span class="copied" id="copied-cipher">copied!</span>
     </div>
     <div class="error" id="err-encrypt"></div>
